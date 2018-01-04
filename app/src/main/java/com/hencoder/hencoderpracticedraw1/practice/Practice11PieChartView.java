@@ -4,6 +4,8 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.support.annotation.ColorInt;
 import android.support.annotation.Nullable;
 import android.util.AttributeSet;
@@ -16,51 +18,32 @@ import java.util.List;
 
 public class Practice11PieChartView extends View {
 
-    private Paint mPaint;
-    private Paint mLinePaint;
-    private Paint mTextPaint;
+    private int mHeight, mWidth;//宽高
+    private Paint mPaint;//扇形的画笔
+    private Paint mTextPaint;//画文字的画笔
 
-    private List<DataBean> mDataList;
+    private int centerX, centerY;//中心坐标
 
-    //半径
-    private static final int RADIUS = 300;
-    //间隔角度
-    private static final int INTERVAL_ANGLE = 2;
-    //偏差长度
-    private static final int DEVIATION_LENGTH = 30;
-    //倾斜线的长度
-    private static final int SLANT_LINE_LENGTH = 30;
-    private static final int STRAIGHT_LINE_LENGTH = 50;
-    private static final int TEXT_INTERVAL = 15;
-    private static final int TEXT_SIZE = 28;
+    //"其他"的value
+    //扇形图分成太多快 所以要合并一部分为其他 即图中灰色部分
+    private double rest;
 
-    {
-        mPaint = new Paint();
-        mPaint.setStyle(Paint.Style.FILL);
-        mPaint.setAntiAlias(true);
+    private int maxNum = 5;//扇形图的最大块数 超过的item就合并到其他
 
-        mLinePaint = new Paint();
-        mLinePaint.setStyle(Paint.Style.FILL);
-        mLinePaint.setAntiAlias(true);
-        mLinePaint.setColor(0xFFFFFFFF);
-        mLinePaint.setStrokeWidth(3);
+    String others = "其他";//“其他”块要显示的文字
+    double total;//数据的总和
+    double[] datas;//数据集
+    String[] texts;//每个数据对应的文字集
 
-        mTextPaint = new Paint();
-        mTextPaint.setStyle(Paint.Style.FILL);
-        mTextPaint.setAntiAlias(true);
-        mTextPaint.setColor(0xFFFFFFFF);
-        mTextPaint.setTextSize(TEXT_SIZE);
+    //颜色 默认的颜色
+    private int[] mColors = {
+            Color.parseColor("#FF4081"), Color.parseColor("#ffc0cb"),
+            Color.parseColor("#00ff00"), Color.parseColor("#0066ff"), Color.parseColor("#ffee00")
+    };
 
-        mDataList = new ArrayList<>();
-        mDataList.add(new DataBean(Color.YELLOW, 100, "Marshmallow", true));
-        mDataList.add(new DataBean(Color.LTGRAY, 200, "Froyo"));
-        mDataList.add(new DataBean(Color.GREEN, 50, "Gingerbread"));
-        mDataList.add(new DataBean(Color.BLUE, 10, "Ice Cream Sandwich"));
-        mDataList.add(new DataBean(Color.CYAN, 30, "Jelly Bean"));
-        mDataList.add(new DataBean(Color.DKGRAY, 200, "KitKat"));
-        mDataList.add(new DataBean(Color.RED, 150, "Lollipop"));
-    }
+    private int mTextSize;//文字大小  单位：像素
 
+    private int radius = 500;//半径 在画图时初始化
 
     public Practice11PieChartView(Context context) {
         super(context);
@@ -78,55 +61,133 @@ public class Practice11PieChartView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-//        综合练习
-//        练习内容：使用各种 Canvas.drawXXX() 方法画饼图
+        //无数据 直接返回
+        if (datas == null || datas.length == 0) return;
 
-        int midWidth = getWidth() / 2;
-        int midHeight = getHeight() / 2;
+        centerX = (getRight() - getLeft()) / 2;
+        centerY = (getBottom() - getTop()) / 2;
 
-        BigDecimal startArc = BigDecimal.valueOf(0);
-        int totalArc = 360 - (mDataList.size() * INTERVAL_ANGLE);
+        int min = mHeight > mWidth ? mWidth : mHeight;
+        if (radius > min / 2) {
+            radius = (int) ((min - getPaddingTop() - getPaddingBottom()) / 3.5);
+        }
+
+        //画各个扇形
+        drawCircle(canvas);
+
+        //画线与文字
+        drawLineAndText(canvas);
+    }
+
+    private void drawLineAndText(Canvas canvas) {
+        int start = 0;
+        //平移画布到中心，所以下面的坐标是从中点开始算起的
+        canvas.translate(centerX, centerY);
+        mPaint.setStrokeWidth(4);
+
+        //如果数据集过大，那么要合并到其他
+        for (int i = 0; i < (maxNum < datas.length ? maxNum : datas.length); i++) {
+            float angles = (float) ((datas[i] * 1.0f / total) * 360);
+            //画线条和文字
+            drawLine(canvas, start, angles, texts[i], mColors[i % mColors.length]);
+            start += angles;
+        }
+
+        //画其他部分的线条和文字
+        if (start < 360) {
+            drawLine(canvas, start, 360 - start, others, Color.GRAY);
+        }
+    }
+
+    private void drawLine(Canvas canvas, int start, float angles, String text, int color) {
+        mPaint.setColor(color);
+        float stopX, stopY;
+        stopX = (float) ((radius + 40) * Math.cos((2 * start + angles) / 2 * Math.PI / 180));
+        stopY = (float) ((radius + 40) * Math.sin((2 * start + angles) / 2) * Math.PI / 180);
+
+        canvas.drawLine((float) ((radius - 20) * Math.cos((2 * start + angles) / 2 * Math.PI / 180)),
+                (float) ((radius - 20) * Math.sin((2 * start + angles) / 2 * Math.PI / 180)),
+                stopX, stopY, mPaint);
+
+        //画横线
+        int dx;//判断横线是话在左边还是右边
+        int endX;
+        if (stopX > 0) {
+            endX = (centerX - getPaddingRight() - 20);
+        } else {
+            endX = (-centerX + getPaddingLeft() + 20);
+        }
+        //画横线
+        canvas.drawLine(stopX, stopY, endX, stopY, mPaint);
+        dx = (int) (endX - stopX);
+
+        //测量文字大小
+        Rect rect = new Rect();
+        mTextPaint.getTextBounds(text, 0, text.length(), rect);
+        int w = rect.width();
+        int h = rect.height();
+        int offset = 20;//文字在横线的偏移量
+        //画文字 文字的Y坐标值的是文字底部的Y坐标
+        canvas.drawText(text, 0, text.length(), dx > 0 ? stopX + offset : stopX - w - offset, stopY + h, mTextPaint);
+
+        //测量百分比大小
+        String percentage = angles / 3.60 + "";
+        percentage = percentage.substring(0, percentage.length() > 4 ? 4 : percentage.length()) + "%";
+        mTextPaint.getTextBounds(percentage, 0, percentage.length(), rect);
+        w = rect.width() - 10;
+        //画百分比
+        canvas.drawText(percentage, 0, percentage.length(), dx > 0 ? stopX + offset : stopX - w - offset, stopY - 5, mTextPaint);
 
     }
 
-    public static class DataBean {
-        private static int total;
+    private void drawCircle(Canvas canvas) {
+        int centerX = (getRight() - getLeft()) / 2;//中点
+        int centerY = (getBottom() - getTop()) / 2;
+        RectF rectF = new RectF((float) (centerX - radius), centerY - radius, centerX + radius, centerY + radius);
 
-        @ColorInt
-        private int color;
-        private int dataNum;
-        private String title;
-        private boolean isDeviation = false;
-
-        public DataBean(int color, int dataNum, String title) {
-            this(color, dataNum, title, false);
+        int start = 0;//扇形开始的角度
+        for (int i = 0; i < (maxNum < datas.length ? maxNum : datas.length); i++) {
+            float angles = (float) ((datas[i] * 1.0f / total) * 360);//计算扇形的角度
+            mPaint.setColor(mColors[i % mColors.length]);//颜色
+            canvas.drawArc(rectF, start, angles, true, mPaint);
+            start += angles;//下一个扇形开始的角度
         }
 
-        public DataBean(int color, int dataNum, String title, boolean isDeviation) {
-            this.color = color;
-            this.dataNum = dataNum;
-            this.title = title;
-            this.isDeviation = isDeviation;
-            total += dataNum;
-        }
-
-        /**
-         * 使用Bigdecimal来避免float不精确的问题
-         */
-        public BigDecimal getPercentage() {
-            return BigDecimal.valueOf(dataNum).divide(BigDecimal.valueOf(total), 4, RoundingMode.DOWN);
-        }
-
-        public int getColor() {
-            return color;
-        }
-
-        public int getDataNum() {
-            return dataNum;
-        }
-
-        public String getTitle() {
-            return title;
+        //画other部分
+        rest = 0;//保存其他部分的value
+        for (int i = maxNum; i < datas.length; i++) {
+            float angles = (float) 360 - start;//other角度
+            mPaint.setColor(Color.GRAY);
+            canvas.drawArc(rectF, start, angles, true, mPaint);
         }
     }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        //获取宽高 不要设置wrap_content
+        mHeight = MeasureSpec.getSize(heightMeasureSpec);
+        mWidth = MeasureSpec.getSize(widthMeasureSpec);
+    }
+
+    public abstract class ArcViewAdapter<T> {
+
+        public void setData(List<T> list) {
+            datas = new double[list.size()];
+            texts = new String[list.size()];
+            for (int i = 0; i < list.size(); i++) {
+                total += getValue(list.get(i));
+                datas[i] = getValue(list.get(i));
+                texts[i] = getText(list.get(i));
+            }
+            invalidate();//请求重绘
+        }
+
+        //通过传来的数据集的某个元素  得到具体的数字
+        public abstract double getValue(T t);
+
+        //通过传来的数据集的某个元素  得到具体的描述
+        public abstract String getText(T t);
+    }
+
 }
