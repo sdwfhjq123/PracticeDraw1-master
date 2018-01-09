@@ -91,7 +91,6 @@ public class Practice11PieChartView extends View {
         drawCircle(canvas);
         canvas.restore();
 
-
         //线与文字
         canvas.save();
         drawLineAndText(canvas);
